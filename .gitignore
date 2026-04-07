@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Build output
+client/dist/
+client/build/
+
+# Environment variables (contains API keys & secrets)
+server/.env
+server/.env.local
+server/.env.*.local
+
+# Uploads
+server/uploads/
+uploads/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# WorkBuddy
+.workbuddy/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Generated images
+generated-images/
