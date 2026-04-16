@@ -2,6 +2,7 @@ import { useContext, useState, useEffect } from 'react'
 import { NavLink, useLocation, Navigate } from 'react-router-dom'
 import { AuthContext, ThemeContext } from '../App'
 import api from '../utils/api'
+import { hasPermission, parsePermissions } from '../utils/permissions'
 
 const NAV = [
   { group: '核心模块', items: [
@@ -21,14 +22,7 @@ const NAV = [
   ]},
 ]
 
-/** 判断用户是否拥有指定模块权限 */
-function hasPermission(permissions, perm) {
-  if (!permissions) return false
-  const perms = typeof permissions === 'string' ? JSON.parse(permissions) : permissions
-  if (perms.includes('*')) return true
-  // 支持精确匹配和通配符（如 finance.* 匹配 finance）
-  return perms.some(p => p === perm || p === `${perm}.*` || p === '*')
-}
+// 权限检查函数已从 utils/permissions 导入
 
 export default function Layout({ children }) {
   const { user, logout } = useContext(AuthContext)
@@ -51,7 +45,7 @@ export default function Layout({ children }) {
   })?.label || '工作台'
 
   // 根据用户权限过滤导航菜单
-  const userPerms = user?.permissions ? (typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions) : []
+  const userPerms = parsePermissions(user?.permissions)
   const filteredNav = NAV.map(group => ({
     ...group,
     items: group.items.filter(item => hasPermission(userPerms, item.perm))
@@ -79,10 +73,10 @@ export default function Layout({ children }) {
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-logo">
           <h1>
-            <i className="fa-solid fa-leaf" />
+            <i className="fa-solid fa-layer-group" />
             <span className="sidebar-brand-text">ERPPlus</span>
           </h1>
-          <p className="sidebar-brand-sub">企业管理系统</p>
+          {!sidebarCollapsed && <p className="sidebar-brand-sub">企业管理系统</p>}
         </div>
         <nav className="sidebar-nav">
           {filteredNav.map(group => (
@@ -126,7 +120,7 @@ export default function Layout({ children }) {
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           title={sidebarCollapsed ? '展开菜单' : '收起菜单'}
         >
-          <i className={`fa-solid ${sidebarCollapsed ? 'fa-angles-right' : 'fa-angles-left'}`} />
+          <i className={`fa-solid ${sidebarCollapsed ? 'fa-chevron-right' : 'fa-chevron-left'}`} />
           {!sidebarCollapsed && <span>收起</span>}
         </button>
       </aside>

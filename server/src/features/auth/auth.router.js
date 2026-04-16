@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { getDb } = require('../../database/db');
 const { JWT_SECRET } = require('../../middleware/auth');
+const { loginValidation } = require('../../middleware/validation');
 
 function createAuthRouter() {
   const express = require('express');
@@ -10,10 +11,9 @@ function createAuthRouter() {
   const { authenticate } = require('../../middleware/auth');
 
   // 登录
-  router.post('/login', (req, res) => {
+  router.post('/login', loginValidation, (req, res) => {
     try {
       const { username, password } = req.body;
-      if (!username || !password) return res.status(400).json({ error: '用户名和密码不能为空' });
 
       const db = getDb();
       const user = db.prepare(`

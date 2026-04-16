@@ -209,91 +209,126 @@ tbody tr:hover { background: rgba(37,99,235,.04); }
 /* ======== 侧边栏 ======== */
 .sidebar {
   position: fixed; left: 0; top: 0; bottom: 0; width: var(--sidebar-w);
-  background: linear-gradient(180deg, #1e3a5f 0%, #1e40af 50%, #1e3a5f 100%);
+  background: #1e293b;
   color: white; display: flex; flex-direction: column;
   z-index: 100; transition: width .28s cubic-bezier(.4,0,.2,1);
-  box-shadow: 2px 0 12px rgba(37,99,235,.2);
+  border-right: 1px solid rgba(255,255,255,.06);
 }
-.sidebar.collapsed { width: 68px; }
+.sidebar.collapsed { width: 64px; }
+
+/* Logo 区域 */
 .sidebar-logo {
-  padding: 20px 20px 16px;
-  border-bottom: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.15);
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
   white-space: nowrap;
   overflow: hidden;
   transition: padding .28s;
 }
-.sidebar.collapsed .sidebar-logo { padding: 20px 14px 16px; text-align: center; }
+.sidebar.collapsed .sidebar-logo { padding: 18px 8px 14px; text-align: center; }
 .sidebar-logo h1 {
-  font-size: 18px; font-weight: 700; color: white;
-  display: flex; align-items: center; gap: 10px;
-  justify-content: center;
+  font-size: 17px; font-weight: 600; color: white;
+  display: flex; align-items: center; gap: 8px;
 }
-.sidebar.collapsed .sidebar-logo h1 { gap: 0; }
-.sidebar.collapsed .sidebar-logo h1 i { font-size: 22px; }
-.sidebar-logo h1 i { color: #93c5fd; font-size: 20px; }
-.sidebar-logo p { font-size: 12px; color: rgba(255,255,255,.5); margin-top: 3px; }
+.sidebar.collapsed .sidebar-logo h1 { justify-content: center; }
+.sidebar.collapsed .sidebar-logo h1 .sidebar-brand-text { display: none; }
+.sidebar-logo h1 i { color: #60a5fa; font-size: 18px; }
+.sidebar.collapsed .sidebar-logo h1 i { font-size: 20px; }
+.sidebar-logo p { font-size: 11px; color: rgba(255,255,255,.45); margin-top: 2px; font-weight: 400; }
 .sidebar.collapsed .sidebar-logo p { display: none; }
-.sidebar-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 12px 8px; transition: padding .28s; }
-.sidebar.collapsed .sidebar-nav { padding: 12px 6px; }
-.sidebar-nav::-webkit-scrollbar { width: 4px; }
+
+/* 导航区域 */
+.sidebar-nav { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 8px 10px; transition: padding .28s; }
+.sidebar.collapsed .sidebar-nav { padding: 8px 8px; }
+.sidebar-nav::-webkit-scrollbar { width: 3px; }
 .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
-.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.2); border-radius: 2px; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius: 2px; }
 .sidebar.collapsed .sidebar-nav::-webkit-scrollbar { width: 0; }
-.nav-group { margin-bottom: 4px; }
+
+/* 分组标题 */
+.nav-group { margin-bottom: 2px; }
 .nav-group-title {
-  font-size: 11px; font-weight: 600; color: rgba(255,255,255,.4);
-  text-transform: uppercase; letter-spacing: .06em; padding: 8px 12px 4px;
+  font-size: 11px; font-weight: 500; color: rgba(255,255,255,.35);
+  padding: 14px 8px 6px;
   white-space: nowrap; overflow: hidden; transition: opacity .2s;
+  letter-spacing: 0.3px;
 }
 .sidebar.collapsed .nav-group-title { opacity: 0; height: 0; padding: 0; overflow: hidden; }
+
+/* 菜单项 */
 .nav-item {
   display: flex; align-items: center; gap: 10px;
-  padding: 9px 12px; border-radius: 7px; color: rgba(255,255,255,.75);
-  cursor: pointer; transition: all .15s; font-size: 14px; text-decoration: none;
+  padding: 8px 10px; border-radius: 6px; color: rgba(255,255,255,.65);
+  cursor: pointer; transition: all .15s ease; font-size: 13px; text-decoration: none;
   white-space: nowrap; overflow: hidden;
+  margin-bottom: 2px;
 }
-.sidebar.collapsed .nav-item { justify-content: center; padding: 10px; }
-.nav-item:hover { background: rgba(255,255,255,.1); color: white; transform: translateX(2px); }
-.sidebar.collapsed .nav-item:hover { transform: none; }
+.sidebar.collapsed .nav-item { justify-content: center; padding: 10px 8px; }
+.nav-item:hover { 
+  background: rgba(255,255,255,.06); 
+  color: rgba(255,255,255,.95); 
+}
 .nav-item.active {
-  background: linear-gradient(90deg, #2563eb, #3b82f6);
-  color: white;
-  box-shadow: 0 2px 8px rgba(37,99,235,.4);
+  background: rgba(59, 130, 246, .18);
+  color: #60a5fa;
 }
-.sidebar.collapsed .nav-item.active { background: rgba(37,99,235,.3); }
-.nav-item.active i { color: white; }
-.nav-icon { width: 20px; text-align: center; font-size: 14px; flex-shrink: 0; }
-.sidebar.collapsed .nav-icon { width: auto; font-size: 16px; }
+.nav-item.active i { color: #60a5fa; }
+.nav-icon { 
+  width: 18px; 
+  text-align: center; 
+  font-size: 13px; 
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.sidebar.collapsed .nav-icon { width: auto; font-size: 15px; }
+.nav-item.active .nav-icon { opacity: 1; }
+
+/* 底部用户区域 */
 .sidebar-footer {
-  padding: 16px; border-top: 1px solid rgba(255,255,255,.12);
-  background: rgba(0,0,0,.1);
+  padding: 12px; 
+  border-top: 1px solid rgba(255,255,255,.08);
   overflow: hidden;
   transition: padding .28s;
 }
-.sidebar.collapsed .sidebar-footer { padding: 12px; }
-.user-info { display: flex; align-items: center; gap: 10px; }
-.sidebar.collapsed .user-info { justify-content: center; }
+.sidebar.collapsed .sidebar-footer { padding: 12px 8px; }
+.user-info { 
+  display: flex; 
+  align-items: center; 
+  gap: 10px;
+  padding: 8px 10px;
+  background: rgba(255,255,255,.04);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.06);
+}
+.sidebar.collapsed .user-info { 
+  justify-content: center; 
+  padding: 8px;
+  background: transparent;
+  border: none;
+}
 .user-avatar {
-  width: 36px; height: 36px; border-radius: 50%;
-  background: linear-gradient(135deg, #2563eb, #3b82f6);
-  border: 2px solid rgba(255,255,255,.3);
+  width: 32px; height: 32px; border-radius: 8px;
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
   display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 600; flex-shrink: 0;
+  font-size: 13px; font-weight: 500; flex-shrink: 0;
+  color: white;
+}
+.sidebar.collapsed .user-avatar {
+  width: 36px; height: 36px;
+  border-radius: 10px;
 }
 .user-details { min-width: 0; }
-.user-details .name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: white; }
-.user-details .role { font-size: 12px; color: rgba(255,255,255,.5); }
+.user-details .name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgba(255,255,255,.9); }
+.user-details .role { font-size: 11px; color: rgba(255,255,255,.45); margin-top: 1px; }
 
 /* 侧边栏收起/展开按钮 */
 .sidebar-collapse-btn {
   display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 10px; border: none; border-top: 1px solid rgba(255,255,255,.1);
-  background: rgba(0,0,0,.08); color: rgba(255,255,255,.6);
+  padding: 10px; border: none; border-top: 1px solid rgba(255,255,255,.06);
+  background: transparent; color: rgba(255,255,255,.4);
   cursor: pointer; font-size: 12px; transition: all .15s; flex-shrink: 0;
 }
-.sidebar-collapse-btn:hover { background: rgba(255,255,255,.1); color: white; }
-.sidebar-collapse-btn i { font-size: 12px; }
+.sidebar-collapse-btn:hover { background: rgba(255,255,255,.05); color: rgba(255,255,255,.8); }
+.sidebar-collapse-btn i { font-size: 11px; }
 .sidebar.collapsed .sidebar-collapse-btn { padding: 10px 0; }
 
 /* ======== 顶部栏 ======== */
@@ -304,7 +339,7 @@ tbody tr:hover { background: rgba(37,99,235,.04); }
   box-shadow: 0 1px 6px rgba(37,99,235,.08);
   transition: left .28s cubic-bezier(.4,0,.2,1);
 }
-.layout-collapsed .header { left: 68px; }
+.layout-collapsed .header { left: 64px; }
 .header-actions { display: flex; align-items: center; gap: 16px; }
 .header-icon-btn {
   background: none; border: none; font-size: 16px; color: var(--text-muted);
@@ -326,7 +361,7 @@ tbody tr:hover { background: rgba(37,99,235,.04); }
   margin-left: var(--sidebar-w); padding-top: var(--header-h); min-height: 100vh;
   transition: margin-left .28s cubic-bezier(.4,0,.2,1);
 }
-.layout-collapsed .main-content { margin-left: 68px; }
+.layout-collapsed .main-content { margin-left: 64px; }
 .page-content { padding: 24px; }
 
 /* ======== 看板 ======== */

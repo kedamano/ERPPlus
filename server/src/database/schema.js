@@ -365,8 +365,26 @@ function initDatabase() {
     try { return db.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name); } catch { return []; }
   };
   const addColIfMissing = (table, col) => {
+    // 白名单验证表名和列名，防止SQL注入
+    const validTables = ['suppliers', 'job_postings', 'invoices', 'customers', 'products', 
+                         'users', 'employees', 'departments', 'roles', 'projects', 'tasks',
+                         'purchase_orders', 'purchase_order_items', 'inventory_transactions',
+                         'accounts', 'vouchers', 'voucher_items', 'sales_leads', 'service_requests',
+                         'candidates', 'job_postings', 'audit_logs', 'notifications', 
+                         'performance_reviews', 'trainings'];
+    const validCols = ['updated_at', 'created_at', 'deleted_at', 'status', 'version'];
+    
+    if (!validTables.includes(table)) {
+      console.error(`  迁移失败: 无效的表名 ${table}`);
+      return;
+    }
+    if (!validCols.includes(col) && !/^[a-z_][a-z0-9_]*$/i.test(col)) {
+      console.error(`  迁移失败: 无效的列名 ${col}`);
+      return;
+    }
+    
     if (!tableInfo(table).includes(col)) {
-      db.prepare(`ALTER TABLE ${table} ADD COLUMN ${col} TEXT DEFAULT ''`).run();
+      db.prepare(`ALTER TABLE "${table}" ADD COLUMN "${col}" TEXT DEFAULT ''`).run();
       console.log(`  迁移: ${table} 添加 ${col} 列`);
     }
   };

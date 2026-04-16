@@ -23,13 +23,55 @@ function createAIRouter() {
     }
   });
 
+  // 文件类型魔数验证（防止扩展名欺骗）
+  const fileTypeMagicNumbers = {
+    '.jpg': ['FFD8FF'],
+    '.jpeg': ['FFD8FF'],
+    '.png': ['89504E47'],
+    '.gif': ['47494638'],
+    '.webp': ['52494646'],
+    '.pdf': ['25504446'],
+    '.docx': ['504B0304'], // ZIP格式（docx/xlsx都是zip）
+    '.xlsx': ['504B0304'],
+    '.txt': null // 文本文件无魔数，需要内容验证
+  };
+
+  const validateFileContent = (filePath, ext) => {
+    try {
+      const magic = fileTypeMagicNumbers[ext];
+      if (!magic) return true; // 无魔数要求的类型
+      
+      const fd = fs.openSync(filePath, 'r');
+      const buffer = Buffer.alloc(4);
+      fs.readSync(fd, buffer, 0, 4, 0);
+      fs.closeSync(fd);
+      
+      const fileMagic = buffer.toString('hex').toUpperCase();
+      return magic.some(m => fileMagic.startsWith(m));
+    } catch (err) {
+      return false;
+    }
+  };
+
   const upload = multer({
     storage,
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: (req, file, cb) => {
-      const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.doc', '.docx', '.txt', '.xlsx', '.csv'];
+      const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.pdf', '.docx', '.txt', '.xlsx'];
       const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, allowed.includes(ext));
+      
+      // 验证扩展名
+      if (!allowed.includes(ext)) {
+        return cb(new Error('不支持的文件类型'), false);
+      }
+      
+      // 验证文件名（防止路径遍历）
+      const basename = path.basename(file.originalname);
+      if (basename.includes('..') || /[<>:"|?*]/.test(basename)) {
+        return cb(new Error('非法文件名'), false);
+      }
+      
+      cb(null, true);
     }
   });
 
@@ -142,6 +184,13 @@ function createAIRouter() {
       const ext = path.extname(req.file.originalname).toLowerCase();
       const isImage = ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(ext);
 
+      // 验证文件内容（防止扩展名欺骗攻击）
+      if (!validateFileContent(req.file.path, ext)) {
+        // 删除非法文件
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ error: '文件内容与扩展名不匹配，可能存在安全风险' });
+      }
+
       // 图片生成可访问的 URL（GLM API 不支持 data: URI）
       let imageUrl = null;
       let base64Data = null;
@@ -155,6 +204,10 @@ function createAIRouter() {
       let textContent = null;
       if (['.txt', '.csv'].includes(ext)) {
         textContent = fs.readFileSync(req.file.path, 'utf-8');
+        // 限制文本文件大小，防止内存溢出
+        if (textContent.length > 5 * 1024 * 1024) { // 5MB 文本限制
+          return res.status(400).json({ error: '文本文件内容过大（超过5MB）' });
+        }
       }
 
       res.json({

@@ -3,12 +3,13 @@ const { getDb } = require('../../database/db');
 const { authenticate } = require('../../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const { parsePagination, paginate } = require('../../middleware/pagination');
+const { paginationValidation, productValidation, supplierValidation } = require('../../middleware/validation');
 
 const router = express.Router();
 router.use(authenticate);
 
 // 供应商列表
-router.get('/suppliers', (req, res) => {
+router.get('/suppliers', paginationValidation, (req, res) => {
   const db = getDb();
   const { page, limit, offset } = parsePagination(req.query);
   const { search = '' } = req.query;
@@ -21,7 +22,7 @@ router.get('/suppliers', (req, res) => {
   res.json(paginate(suppliers, total, page, limit));
 });
 
-router.post('/suppliers', (req, res) => {
+router.post('/suppliers', supplierValidation.create, (req, res) => {
   const db = getDb();
   const d = req.body;
   const id = uuidv4();
@@ -33,7 +34,7 @@ router.post('/suppliers', (req, res) => {
 });
 
 // 更新供应商
-router.put('/suppliers/:id', (req, res) => {
+router.put('/suppliers/:id', supplierValidation.update, (req, res) => {
   const db = getDb();
   const d = req.body;
   try {
@@ -53,7 +54,7 @@ router.delete('/suppliers/:id', (req, res) => {
 });
 
 // 产品列表
-router.get('/products', (req, res) => {
+router.get('/products', paginationValidation, (req, res) => {
   const db = getDb();
   const { page, limit, offset } = parsePagination(req.query);
   const { search = '', category = '', low_stock = '' } = req.query;
@@ -72,7 +73,7 @@ router.get('/products', (req, res) => {
   res.json(paginate(products, total, page, limit));
 });
 
-router.post('/products', (req, res) => {
+router.post('/products', productValidation.create, (req, res) => {
   const db = getDb();
   const d = req.body;
   const id = uuidv4();
@@ -83,7 +84,7 @@ router.post('/products', (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-router.put('/products/:id', (req, res) => {
+router.put('/products/:id', productValidation.update, (req, res) => {
   const db = getDb();
   const d = req.body;
   db.prepare(`UPDATE products SET name=?, category=?, unit=?, cost_price=?, sale_price=?, min_stock=?, max_stock=?, status=?, updated_at=datetime('now') WHERE id=?`
@@ -91,8 +92,8 @@ router.put('/products/:id', (req, res) => {
   res.json({ message: '更新成功' });
 });
 
-// 采购订单
-router.get('/purchase-orders', (req, res) => {
+// 采购订单 - 使用 JOIN 避免 N+1 查询
+router.get('/purchase-orders', paginationValidation, (req, res) => {
   const db = getDb();
   const { page, limit, offset } = parsePagination(req.query);
   const { status = '' } = req.query;
@@ -101,20 +102,41 @@ router.get('/purchase-orders', (req, res) => {
   if (status) { where += ' AND po.status = ?'; params.push(status); }
 
   const total = db.prepare(`SELECT COUNT(*) as cnt FROM purchase_orders po ${where}`).get(...params).cnt;
-  const orders = db.prepare(`
-    SELECT po.*, s.name as supplier_name, u.full_name as creator_name
+  
+  // 一次性查询所有订单和明细（使用 GROUP BY 和 JSON 聚合）
+  const rows = db.prepare(`
+    SELECT 
+      po.*, 
+      s.name as supplier_name, 
+      u.full_name as creator_name,
+      COALESCE(json_group_array(
+        json_object(
+          'id', poi.id,
+          'product_id', poi.product_id,
+          'quantity', poi.quantity,
+          'unit_price', poi.unit_price,
+          'amount', poi.amount,
+          'product_name', p.name,
+          'unit', p.unit
+        )
+      ), '[]') as items_json
     FROM purchase_orders po
     LEFT JOIN suppliers s ON po.supplier_id = s.id
     LEFT JOIN users u ON po.created_by = u.id
-    ${where} ORDER BY po.created_at DESC LIMIT ? OFFSET ?
+    LEFT JOIN purchase_order_items poi ON poi.order_id = po.id
+    LEFT JOIN products p ON poi.product_id = p.id
+    ${where}
+    GROUP BY po.id
+    ORDER BY po.created_at DESC
+    LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
-  const result = orders.map(o => {
-    const items = db.prepare(`
-      SELECT poi.*, p.name as product_name, p.unit FROM purchase_order_items poi
-      JOIN products p ON poi.product_id = p.id WHERE poi.order_id = ?
-    `).all(o.id);
-    return { ...o, items };
-  });
+  
+  // 解析 JSON 并过滤掉空项
+  const result = rows.map(o => ({
+    ...o,
+    items: JSON.parse(o.items_json).filter(item => item.id !== null)
+  }));
+  
   res.json(paginate(result, total, page, limit));
 });
 

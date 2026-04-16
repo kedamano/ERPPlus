@@ -3,12 +3,13 @@ const { getDb } = require('../../database/db');
 const { authenticate } = require('../../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const { paginationValidation, userValidation } = require('../../middleware/validation');
 
 const router = express.Router();
 router.use(authenticate);
 
 // 获取用户列表
-router.get('/', (req, res) => {
+router.get('/', paginationValidation, (req, res) => {
   const db = getDb();
   const { page = 1, limit = 20, search = '', status = '' } = req.query;
   const offset = (page - 1) * limit;
@@ -31,7 +32,7 @@ router.get('/', (req, res) => {
 });
 
 // 创建用户
-router.post('/', (req, res) => {
+router.post('/', userValidation.create, (req, res) => {
   const db = getDb();
   const { username, email, full_name, phone, password = 'Admin@123', role_id, department_id } = req.body;
   const id = uuidv4();
@@ -48,7 +49,7 @@ router.post('/', (req, res) => {
 });
 
 // 更新用户
-router.put('/:id', (req, res) => {
+router.put('/:id', userValidation.update, (req, res) => {
   const db = getDb();
   const { full_name, phone, email, role_id, department_id, status } = req.body;
   db.prepare(`

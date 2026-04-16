@@ -3,12 +3,13 @@ const { getDb } = require('../../database/db');
 const { authenticate } = require('../../middleware/auth');
 const { v4: uuidv4 } = require('uuid');
 const { parsePagination, paginate } = require('../../middleware/pagination');
+const { paginationValidation, customerValidation, leadValidation, serviceValidation } = require('../../middleware/validation');
 
 const router = express.Router();
 router.use(authenticate);
 
 // 客户列表
-router.get('/customers', (req, res) => {
+router.get('/customers', paginationValidation, (req, res) => {
   const db = getDb();
   const { page, limit, offset } = parsePagination(req.query);
   const { search = '', type = '', credit_level = '' } = req.query;
@@ -28,7 +29,7 @@ router.get('/customers', (req, res) => {
 });
 
 // 新增客户
-router.post('/customers', (req, res) => {
+router.post('/customers', customerValidation.create, (req, res) => {
   const db = getDb();
   const d = req.body;
   const id = uuidv4();
@@ -40,7 +41,7 @@ router.post('/customers', (req, res) => {
 });
 
 // 更新客户
-router.put('/customers/:id', (req, res) => {
+router.put('/customers/:id', customerValidation.update, (req, res) => {
   const db = getDb();
   const d = req.body;
   db.prepare(`UPDATE customers SET name=?, type=?, industry=?, contact_person=?, contact_phone=?, contact_email=?, city=?, province=?, credit_level=?, status=?, annual_value=?, updated_at=datetime('now') WHERE id=?`
@@ -49,7 +50,7 @@ router.put('/customers/:id', (req, res) => {
 });
 
 // 销售线索
-router.get('/leads', (req, res) => {
+router.get('/leads', paginationValidation, (req, res) => {
   const db = getDb();
   const { page, limit, offset } = parsePagination(req.query);
   const { stage = '' } = req.query;
@@ -69,7 +70,7 @@ router.get('/leads', (req, res) => {
 });
 
 // 新增销售线索
-router.post('/leads', (req, res) => {
+router.post('/leads', leadValidation.create, (req, res) => {
   const db = getDb();
   const d = req.body;
   const id = uuidv4();
@@ -79,7 +80,7 @@ router.post('/leads', (req, res) => {
 });
 
 // 更新线索阶段
-router.put('/leads/:id', (req, res) => {
+router.put('/leads/:id', leadValidation.update, (req, res) => {
   const db = getDb();
   const d = req.body;
   db.prepare(`UPDATE sales_leads SET title=?, amount=?, stage=?, probability=?, expected_close=?, notes=?, updated_at=datetime('now') WHERE id=?`
@@ -88,7 +89,7 @@ router.put('/leads/:id', (req, res) => {
 });
 
 // 服务请求列表
-router.get('/service', (req, res) => {
+router.get('/service', paginationValidation, (req, res) => {
   const db = getDb();
   const { page, limit, offset } = parsePagination(req.query);
   const { status = '' } = req.query;
@@ -108,7 +109,7 @@ router.get('/service', (req, res) => {
 });
 
 // 获取单个服务请求详情
-router.get('/service/:id', (req, res) => {
+router.get('/service/:id', serviceValidation.update, (req, res) => {
   const db = getDb();
   const row = db.prepare(`
     SELECT s.*, c.name as customer_name, c.contact_person, c.contact_phone,
@@ -123,10 +124,9 @@ router.get('/service/:id', (req, res) => {
 });
 
 // 新增服务请求
-router.post('/service', (req, res) => {
+router.post('/service', serviceValidation.create, (req, res) => {
   const db = getDb();
   const d = req.body;
-  if (!d.title) return res.status(400).json({ error: '工单标题不能为空' });
   const id = uuidv4();
   db.prepare(`INSERT INTO service_requests (id, title, customer_id, type, priority, description, assignee_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(id, d.title, d.customer_id || null, d.type || 'support', d.priority || 'medium', d.description || '', d.assignee_id || null, req.user.id);
@@ -134,7 +134,7 @@ router.post('/service', (req, res) => {
 });
 
 // 更新服务请求
-router.put('/service/:id', (req, res) => {
+router.put('/service/:id', serviceValidation.update, (req, res) => {
   const db = getDb();
   const d = req.body;
   const existing = db.prepare('SELECT id, status FROM service_requests WHERE id = ?').get(req.params.id);
@@ -156,12 +156,9 @@ router.delete('/service/:id', (req, res) => {
 });
 
 // 更新工单状态（快捷操作）
-router.patch('/service/:id/status', (req, res) => {
+router.patch('/service/:id/status', serviceValidation.updateStatus, (req, res) => {
   const db = getDb();
   const { status } = req.body;
-  if (!['open', 'in_progress', 'resolved', 'closed'].includes(status)) {
-    return res.status(400).json({ error: '无效的状态值' });
-  }
   const existing = db.prepare('SELECT status FROM service_requests WHERE id = ?').get(req.params.id);
   if (!existing) return res.status(404).json({ error: '工单不存在' });
   db.prepare('UPDATE service_requests SET status=?, updated_at=datetime(\'now\') WHERE id=?').run(status, req.params.id);

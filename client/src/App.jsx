@@ -11,6 +11,7 @@ import ProjectsPage from './pages/Projects'
 import UsersPage from './pages/Users'
 import AIAssistant from './pages/AIAssistant'
 import Analytics from './pages/Analytics'
+import { hasPermission, parsePermissions } from './utils/permissions'
 
 export const AuthContext = createContext(null)
 export const ThemeContext = createContext(null)
@@ -20,18 +21,10 @@ function PrivateRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />
 }
 
-/** 判断用户是否拥有指定模块权限 */
-function hasPermission(permissions, perm) {
-  if (!permissions) return false
-  const perms = typeof permissions === 'string' ? JSON.parse(permissions) : permissions
-  if (perms.includes('*')) return true
-  return perms.some(p => p === perm || p === `${perm}.*`)
-}
-
 /** 带权限校验的路由守卫组件 */
 function AuthorizedRoute({ children, permission }) {
   const { user } = useContext(AuthContext)
-  const perms = user?.permissions ? (typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions) : []
+  const perms = parsePermissions(user?.permissions)
   if (!hasPermission(perms, permission)) {
     return <Navigate to="/" replace />
   }
