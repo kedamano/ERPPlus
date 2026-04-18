@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useContext } from 'react'
-import api from '../utils/api'
+import api, { apiFetch } from '../utils/api'
+import { renderSafeMarkdown } from '../utils/safeMarkdown'
 import { AuthContext } from '../App'
 import './AIAssistant.css'
 
@@ -7,29 +8,6 @@ import './AIAssistant.css'
 function fmtMoney(v) {
   if (v == null || isNaN(v)) return '¥0'
   return '¥' + Number(v).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
-
-/* 简单 Markdown 渲染 */
-function renderMarkdown(text) {
-  if (!text) return ''
-  let html = text
-    .replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
-      const escaped = code.replace(/</g, '&lt;').replace(/>/g, '&gt;').trimEnd()
-      return `<pre class="md-pre"><div class="md-pre-header"><span>${lang || 'code'}</span><button onclick="navigator.clipboard.writeText(this.closest('.md-pre').querySelector('code').textContent)" title="复制"><i class="fa-regular fa-copy"></i></button></div><code>${escaped}</code></pre>`
-    })
-    .replace(/`([^`]+)`/g, '<code class="md-inline">$1</code>')
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/^### (.*$)/gm, '<h4>$1</h4>')
-    .replace(/^## (.*$)/gm, '<h3>$1</h3>')
-    .replace(/^# (.*$)/gm, '<h3 style="font-size:16px">$1</h3>')
-    .replace(/^\d+\.\s+(.*$)/gm, '<li>$1</li>')
-    .replace(/^[-*]\s+(.*$)/gm, '<li>$1</li>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-    .replace(/\n/g, '<br/>')
-  html = html.replace(/(<li>.*?<\/li>)(?:<br\/>)?/gs, '$1')
-  html = html.replace(/((?:<li>.*?<\/li>)+)/gs, '<ul>$1</ul>')
-  return html
 }
 
 /* ===== 财务报表卡片组件 ===== */
@@ -195,6 +173,14 @@ function BarChart({ data }) {
 function MessageBubble({ msg, isLast, onGenerateReport }) {
   const isUser = msg.role === 'user'
 
+  const onMarkdownClick = (e) => {
+    const btn = e.target.closest('.md-copy-btn')
+    if (!btn) return
+    const pre = btn.closest('.md-pre')
+    const code = pre?.querySelector('code')
+    if (code) navigator.clipboard.writeText(code.textContent || '')
+  }
+
   /* 检测 AI 回复中的报表标记 */
   const renderContent = () => {
     if (isUser) return <div className="ai-msg-text">{msg.content}</div>
@@ -208,7 +194,12 @@ function MessageBubble({ msg, isLast, onGenerateReport }) {
     return (
       <>
         {cleanText && (
-          <div className="ai-msg-text ai-msg-markdown" dangerouslySetInnerHTML={{ __html: renderMarkdown(cleanText) }} />
+          <div
+            className="ai-msg-text ai-msg-markdown"
+            onClick={onMarkdownClick}
+            role="presentation"
+            dangerouslySetInnerHTML={{ __html: renderSafeMarkdown(cleanText) }}
+          />
         )}
         {msg.report && <ReportCard report={msg.report} />}
         {reportMatch && !msg.report && (
@@ -288,13 +279,64 @@ export default function AIAssistant() {
   const fileInputRef = useRef(null)
   const [pendingFiles, setPendingFiles] = useState([])
   const [models, setModels] = useState([])
+  const [retryCooldownSec, setRetryCooldownSec] = useState(null)
+
+  const conversationsRef = useRef(conversations)
+  conversationsRef.current = conversations
+  const mountedRef = useRef(true)
+  const retryTimerRef = useRef(null)
+
+  const clearRetryTimers = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearInterval(retryTimerRef.current)
+      retryTimerRef.current = null
+    }
+    setRetryCooldownSec(null)
+  }, [])
 
   const activeConv = conversations.find(c => c.id === activeConvId)
   const messages = activeConv?.messages || []
 
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      clearRetryTimers()
+    }
+  }, [clearRetryTimers])
+
   useEffect(() => { api.get('/ai/models').then(d => setModels(d.models || [])).catch(() => {}) }, [])
+  /* 与导入逻辑一致：修正历史 localStorage 中可能出现的重复 id */
+  useEffect(() => {
+    setConversations(prev => {
+      if (!Array.isArray(prev) || prev.length === 0) return prev
+      const used = new Set()
+      let changed = false
+      const next = prev.map((c, i) => {
+        let id = c?.id
+        if (!id || used.has(id)) {
+          changed = true
+          do {
+            id = `conv-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 10)}`
+          } while (used.has(id))
+        }
+        used.add(id)
+        return id === c.id ? c : { ...c, id }
+      })
+      return changed ? next : prev
+    })
+  }, [userId])
   useEffect(() => { localStorage.setItem(`erp_ai_conversations_${userId}`, JSON.stringify(conversations)) }, [conversations, userId])
   useEffect(() => { localStorage.setItem(`erp_ai_active_conv_${userId}`, activeConvId || '') }, [activeConvId, userId])
+  useEffect(() => {
+    if (!conversations.length) {
+      if (activeConvId) setActiveConvId(null)
+      return
+    }
+    if (activeConvId && !conversations.some(c => c.id === activeConvId)) {
+      setActiveConvId(conversations[0].id)
+    }
+  }, [conversations, activeConvId])
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => {
     const ta = textareaRef.current
@@ -316,10 +358,9 @@ export default function AIAssistant() {
     if (!activeConvId || reportLoading) return
     setReportLoading(true)
     try {
-      const token = localStorage.getItem('erp_token')
-      const res = await fetch('/api/ai/finance-report', {
+      const res = await apiFetch('/api/ai/finance-report', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ report_type: reportType, period: 'current' })
       })
       const report = await res.json()
@@ -349,6 +390,8 @@ export default function AIAssistant() {
     let convId = activeConvId
     if (!convId) convId = newConversation()
 
+    const priorMessages = (conversationsRef.current.find(c => c.id === convId)?.messages) || []
+
     const msgText = input.trim()
     const images = pendingFiles.filter(f => f.isImage).map(f => f.base64)
     const imagePreviews = pendingFiles.filter(f => f.isImage).map(f => f.base64)
@@ -356,10 +399,31 @@ export default function AIAssistant() {
     setPendingFiles([])
     setRetryCount(0)
 
-    await doSendMessage(convId, msgText, images, null, imagePreviews)
+    await doSendMessage(convId, msgText, images, null, imagePreviews, priorMessages)
   }
 
-  const doSendMessage = async (convId, msgText, images, forceModel, imagePreviews) => {
+  const scheduleRateLimitRetry = useCallback((fn) => {
+    clearRetryTimers()
+    setRateLimited(true)
+    let sec = 3
+    setRetryCooldownSec(sec)
+    retryTimerRef.current = setInterval(() => {
+      sec -= 1
+      if (sec <= 0) {
+        if (retryTimerRef.current) {
+          clearInterval(retryTimerRef.current)
+          retryTimerRef.current = null
+        }
+        setRetryCooldownSec(null)
+        setRateLimited(false)
+        if (mountedRef.current) fn()
+        return
+      }
+      setRetryCooldownSec(sec)
+    }, 1000)
+  }, [clearRetryTimers])
+
+  const doSendMessage = async (convId, msgText, images, forceModel, imagePreviews, priorMessages) => {
     const userMsg = {
       role: 'user',
       content: msgText,
@@ -387,8 +451,10 @@ export default function AIAssistant() {
 
       // 构建对话历史（历史中的图片不发送给 API，避免 localhost URL 报错和请求体过大）
       const apiMessages = []
-      const prevConv = conversations.find(c => c.id === convId)
-      for (const m of (prevConv?.messages || [])) {
+      const historyBase = priorMessages != null
+        ? priorMessages
+        : (conversationsRef.current.find(c => c.id === convId)?.messages || [])
+      for (const m of historyBase) {
         if (m.role === 'user') {
           // 历史消息只发文字，不发图片（图片只有当前消息才用 base64 发送）
           const textContent = typeof m.content === 'string' ? m.content : ''
@@ -419,29 +485,26 @@ export default function AIAssistant() {
       // 使用 smart-chat（带数据上下文）或 vision 接口
       const endpoint = isVision ? '/ai/chat/vision' : '/ai/smart-chat'
 
-      const response = await fetch(`/api${endpoint}`, {
+      const response = await apiFetch(`/api${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('erp_token')}` },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: apiMessages, model: useModel })
       })
 
       if (!response.ok) {
-        const err = await response.json()
+        const err = await response.json().catch(() => ({}))
         // 429 自动降级到免费模型重试
         if (response.status === 429 && useModel !== 'glm-4-flash' && retryCount < 2) {
-          setRateLimited(true)
           setRetryCount(prev => prev + 1)
           // 移除已添加的 user+assistant 占位消息
           setConversations(prev => prev.map(c => {
             if (c.id !== convId) return c
             return { ...c, messages: c.messages.slice(0, -2) }
           }))
-          // 3秒后用 glm-4-flash 重试
-          setTimeout(async () => {
-            setRateLimited(false)
-            await doSendMessage(convId, msgText, images, 'glm-4-flash')
+          scheduleRateLimitRetry(() => {
             setRetryCount(0)
-          }, 3000)
+            void doSendMessage(convId, msgText, images, 'glm-4-flash', imagePreviews, priorMessages)
+          })
           setLoading(false)
           return
         }
@@ -473,18 +536,16 @@ export default function AIAssistant() {
               if (json.error === 'rate_limit') {
                 // 流式返回的 429 错误，自动降级重试
                 if (useModel !== 'glm-4-flash' && retryCount < 2) {
-                  setRateLimited(true)
                   setRetryCount(prev => prev + 1)
-                  // 移除错误的 assistant 消息
+                  // 移除本轮 user+assistant 占位，与 HTTP 429 回滚一致，避免重试时重复用户消息
                   setConversations(prev => prev.map(c => {
                     if (c.id !== convId) return c
-                    return { ...c, messages: c.messages.slice(0, -1) }
+                    return { ...c, messages: c.messages.slice(0, -2) }
                   }))
-                  setTimeout(async () => {
-                    setRateLimited(false)
-                    await doSendMessage(convId, msgText, images, 'glm-4-flash')
+                  scheduleRateLimitRetry(() => {
                     setRetryCount(0)
-                  }, 3000)
+                    void doSendMessage(convId, msgText, images, 'glm-4-flash', imagePreviews, priorMessages)
+                  })
                   return // 跳出 pump 循环
                 }
                 fullContent += '\n\n⚠️ 请求过于频繁，请稍后再试或切换到免费模型（GLM-4-Flash）。'
@@ -532,9 +593,8 @@ export default function AIAssistant() {
       try {
         const formData = new FormData()
         formData.append('file', file)
-        const res = await fetch('/api/ai/upload', {
+        const res = await apiFetch('/api/ai/upload', {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('erp_token')}` },
           body: formData
         })
         const data = await res.json()
@@ -545,16 +605,76 @@ export default function AIAssistant() {
     e.target.value = ''
   }
 
-  /* 删除对话 */
+  /* 删除对话（只删第一条匹配 id，避免历史上重复 id 时误删多条） */
   const deleteConversation = (id, e) => {
     e.stopPropagation()
     if (!confirm('确定删除这个对话吗？')) return
-    setConversations(prev => prev.filter(c => c.id !== id))
-    if (activeConvId === id) {
-      const remaining = conversations.filter(c => c.id !== id)
-      setActiveConvId(remaining.length > 0 ? remaining[0].id : null)
-    }
+    setConversations(prev => {
+      const idx = (prev || []).findIndex(c => c?.id === id)
+      if (idx === -1) return prev
+      const next = [...(prev || []).slice(0, idx), ...(prev || []).slice(idx + 1)]
+      if (activeConvId === id) {
+        const still = next.find(c => c?.id === id)
+        setActiveConvId(still ? id : (next[0]?.id ?? null))
+      }
+      return next
+    })
   }
+
+  const importInputRef = useRef(null)
+
+  const exportConversations = useCallback(() => {
+    const payload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      conversations
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `erp-ai-conversations-${userId}-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }, [conversations, userId])
+
+  const importConversations = useCallback((e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result || ''))
+        const list = Array.isArray(data) ? data : data.conversations
+        if (!Array.isArray(list)) throw new Error('文件格式无效')
+        const raw = list.map((c, i) => ({
+          id: typeof c?.id === 'string' ? c.id : null,
+          title: typeof c?.title === 'string' ? c.title : '导入的对话',
+          messages: Array.isArray(c?.messages) ? c.messages : [],
+          model: c?.model,
+          createdAt: c?.createdAt || new Date().toISOString()
+        }))
+        if (!confirm(`将合并 ${raw.length} 个对话到当前列表，是否继续？`)) return
+        setConversations(prev => {
+          const used = new Set((prev || []).map(c => c?.id).filter(Boolean))
+          const merged = raw.map((c, idx) => {
+            let nid = c.id
+            if (!nid || used.has(nid)) {
+              do {
+                nid = `conv-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 10)}`
+              } while (used.has(nid))
+            }
+            used.add(nid)
+            return { ...c, id: nid }
+          })
+          return [...merged, ...(prev || [])]
+        })
+      } catch (err) {
+        alert('导入失败：' + (err.message || '无法解析 JSON'))
+      }
+    }
+    reader.readAsText(file)
+  }, [])
 
   /* 快捷命令 */
   const quickCommands = [
@@ -594,6 +714,23 @@ export default function AIAssistant() {
             <i className="fa-solid fa-plus" />
             <span>新建对话</span>
           </button>
+          <div className="ai-sidebar-io">
+            <button type="button" className="ai-io-btn" onClick={exportConversations} title="导出为 JSON">
+              <i className="fa-solid fa-file-export" />
+              <span>导出</span>
+            </button>
+            <button type="button" className="ai-io-btn" onClick={() => importInputRef.current?.click()} title="从 JSON 合并导入">
+              <i className="fa-solid fa-file-import" />
+              <span>导入</span>
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="application/json,.json"
+              className="ai-import-input"
+              onChange={importConversations}
+            />
+          </div>
         </div>
 
         <div className="ai-sidebar-list">
@@ -681,7 +818,10 @@ export default function AIAssistant() {
             borderBottom: '1px solid #fbbf24'
           }}>
             <i className="fa-solid fa-triangle-exclamation" style={{ animation: 'pulse 1s infinite' }} />
-            <span>当前模型请求频繁，正在自动切换到 <strong>GLM-4-Flash（免费）</strong> 重试...</span>
+            <span>
+              当前模型请求频繁，正在自动切换到 <strong>GLM-4-Flash（免费）</strong> 重试
+              {retryCooldownSec != null ? `（${retryCooldownSec} 秒）` : ''}…
+            </span>
           </div>
         )}
 
